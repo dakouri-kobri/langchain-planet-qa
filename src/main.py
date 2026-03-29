@@ -1,88 +1,61 @@
 # Imports =======================================
-from http.client import responses
 
-from langchain_core.prompts import PromptTemplate, FewShotPromptTemplate
-from langchain_groq import ChatGroq
+from pathlib import Path
 import dotenv
 
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
 
-# Configuration / Setup =========================
 
-def setup_llm():
-    dotenv.load_dotenv()
+# Paths =========================================
 
-    return ChatGroq(
-        model="llama-3.3-70b-versatile",
-        temperature=0.5,
-        max_retries=2
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = ROOT_DIR / "data" / "planets"
+
+
+# Load Documents ================================
+
+def load_documents():
+    docs = []
+
+    for file_path in sorted(DATA_DIR.glob("*.txt")):
+        content = file_path.read_text(encoding="utf-8").strip()
+        if content:
+            docs.append(content)
+
+    return docs
+
+
+# Build Vector Store ============================
+
+def build_vectorstore(docs: list[str]) -> Chroma:
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
 
-
-# Few-shot Examples =============================
-
-def get_examples():
-    examples = [
-        {
-            "input": "Jupiter",
-            "output": (
-                "Jupiter is the largest planet in the solar system.\n"
-                "It is a gas giant primarily composed of hydrogen and helium.\n"
-                "It has a Great Red Spot, a massive storm, and at least 79 known moons."
-            )
-        },
-        {
-            "input": "Mars",
-            "output": (
-                "Mars is the fourth planet from the Sun.\n"
-                "It has a thin atmosphere composed mainly of carbon dioxide.\n"
-                "Notable features include Olympus Mons and Valles Marineris."
-            )
-        }
-    ]
-
-    return examples
-
-
-# Prompt builder =============================
-
-def build_prompt():
-    examples = get_examples()
-    example_template = PromptTemplate.from_template(
-        "Planet: {input}\nAnswer:\n{output}\n",
+    vectorstore = Chroma(
+        embedding_function=embeddings
     )
 
-    few_shot_prompt = FewShotPromptTemplate(
-        examples=examples,
-        example_prompt=example_template,
-        suffix = (
-            "Planet: {question}\n"
-            "Answer:\n"
-            "Provide key details including:\n"
-            "- Physical characteristics (size, composition, atmosphere)\n"
-            "- Notable features (rings, moons, surface conditions\n"
-            "- Scientific or historical significance\n"
-            "- Fun or surprising facts\n"
-        ),
-        input_variables=["question"]
-    )
+    vectorstore.add_texts(docs)
 
-    return few_shot_prompt
+    return vectorstore
 
 
 # Main Application Logic ========================
 
-def main():
-    llm = setup_llm()
-    prompt_template = build_prompt()
+def main() -> None:
+    dotenv.load_dotenv()
 
-    question = input("Enter a planet name: ")
+    docs = load_documents()
+    vectorstore = build_vectorstore(docs)
 
-    final_prompt = prompt_template.format(question=question)
+    query = input("Ask a question about planets: ")
 
-    response = llm.invoke(final_prompt)
+    results = vectorstore.similarity_search(query, k=1)
 
-    print("========= Answer =========\n")
-    print(response.content)
+    print("========= Most Relevant Document =========\n")
+    print(results[0].page_content)
 
 
 # Entry Point ===================================
