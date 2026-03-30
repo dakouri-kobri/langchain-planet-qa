@@ -1,5 +1,5 @@
 # Imports =======================================
-
+from os.path import exists
 from pathlib import Path
 
 import dotenv
@@ -14,11 +14,12 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT_DIR / "data" / "planets"
+CHROMA_DIR = ROOT_DIR / "chroma_db"
 
 
 # Load Documents ================================
 
-def load_documents():
+def load_documents() -> list[str]:
     docs = []
 
     for file_path in sorted(DATA_DIR.glob("*.txt")):
@@ -32,14 +33,22 @@ def load_documents():
 # Build Vector Store ============================
 
 def build_vectorstore() -> Chroma:
-    docs = load_documents()
 
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
 
-    vectorstore = Chroma(embedding_function=embeddings)
-    vectorstore.add_texts(docs)
+    vectorstore: Chroma = Chroma(
+        persist_directory=str(CHROMA_DIR),
+        embedding_function=embeddings
+    )
+
+    # noinspection PyProtectedMember
+    existing_count = vectorstore._collection.count()
+
+    if existing_count == 0:
+        docs = load_documents()
+        vectorstore.add_texts(docs)
 
     return vectorstore
 
