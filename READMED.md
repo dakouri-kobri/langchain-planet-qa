@@ -1,29 +1,48 @@
 # 🌌 Introduction to LangChain — Planet QA System
 
-A modular **LLM-powered question-answering system** built with LangChain.
-This project demonstrates how to combine **prompt engineering, vector search, and tool usage** to create a robust and controlled AI application.
+A modular LLM-powered question-answering system that answers questions about planets using LangChain, Chroma vector search, Groq models, and Hugging Face embeddings.
+
+This project demonstrates how to build a reliable AI application by combining:
+
+- prompt engineering
+- retrieval-augmented generation (RAG)
+- tool-based reasoning
+- runnable pipelines
+- guardrails to prevent hallucinations
 
 ---
 
 ## 🚀 Features
 
-* 🔹 Prompt-based LLM interaction using LangChain
-* 🔹 Retrieval-Augmented Generation (RAG) with Chroma vector database
-* 🔹 Custom tools for structured reasoning:
+- Prompt-based question answering with LangChain
+- Retrieval of planetary information using Chroma vector database
+- Custom tools for:
+  - distance from the Sun
+  - revolution period
+  - general planet information
+- Runnable chain composition with LangChain
+- Guardrails to avoid unsupported answers
+- Persistent vector store
+- Interactive CLI session
 
-  * Planet distance from the Sun
-  * Planet revolution period
-  * General planetary information via embeddings
-* 🔹 Guardrails to prevent hallucinations
-* 🔹 Modular architecture (clean separation of concerns)
-* 🔹 Interactive CLI session with optional inactivity timeout
-* 🔹 Persistent vector store (no re-indexing on each run)
+---
+## 🧩 Tech Stack
+
+* **Python 3.11**
+* **LangChain** — LLM orchestration
+* **Groq API** — fast LLM inference
+* **ChromaDB** — vector storage
+* **HuggingFace Embeddings** — semantic search
+* **uv** — modern Python package manager
 
 ---
 
-## 🧠 Project Architecture
+## 📁 Project Structure
 
 ```
+data/
+└── planets/              # txt files, source of primary infomation on planets
+
 src/
 ├── main.py              # Entry point
 ├── config.py            # Configuration and constants
@@ -41,7 +60,7 @@ src/
 ### 1. Clone the repository
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/dakouri-kobri/langchain-planet-qa.git
 cd IntroductionToLangChain
 ```
 
@@ -49,6 +68,7 @@ cd IntroductionToLangChain
 
 ```bash
 uv venv
+.venv\Scripts\activate
 uv pip install -r requirements.txt
 ```
 
@@ -68,7 +88,7 @@ Create a `.env` file in the root directory:
 GROQ_API_KEY=your_api_key_here
 ```
 
-> ⚠️ Make sure `.env` is included in `.gitignore`
+> ⚠️ Make sure `.env` is included in `.gitignore` — do not commit your API keys.
 
 ---
 
@@ -100,7 +120,7 @@ Ask about planets: Tell me about planet Zeor.
 
 ## 🛡️ Guardrails & Reliability
 
-This system avoids hallucinations through:
+This system includes validation to reduce hallucinations through:
 
 * ✅ Tool-based architecture (LLM must use tools)
 * ✅ Input validation before tool execution
@@ -110,14 +130,10 @@ This system avoids hallucinations through:
 
 ---
 
-## 🧩 Technologies Used
-
-* **LangChain** — LLM orchestration
-* **Groq API** — fast LLM inference
-* **ChromaDB** — vector storage
-* **HuggingFace Embeddings** — semantic search
-* **Python 3.11**
-* **uv** — modern Python package manager
+⚠️ Limitations
+Limited to the provided planetary dataset
+CLI-only interface
+Rule-based validation rather than full semantic verification
 
 ---
 
@@ -134,18 +150,10 @@ This project demonstrates:
 
 ---
 
-## ⚠️ Known Limitations
-
-* Limited to predefined planetary dataset
-* CLI-based interface (no UI yet)
-* Basic rule-based guardrails (not full semantic validation)
-
----
-
 ## 🔮 Future Improvements
 
 * 🌐 Web interface (Streamlit / FastAPI)
-* 🧠 Better intent classification
+* 🧠 Better query intent classification
 * 📊 Logging and observability
 * 🗂️ Support for larger datasets
 * 🤖 Multi-step reasoning agents
@@ -161,4 +169,4 @@ Health Science, Data Science, & AI Enthusiast
 
 ## 📄 License
 
-This project is for educational purposes.
+This project is for educational purposes. It is licensed under the terms of the LICENSE file in the repository.
