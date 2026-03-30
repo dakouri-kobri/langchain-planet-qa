@@ -3,6 +3,7 @@ from langchain_core.tools import tool
 
 # Local imports
 from vectorstore import build_vectorstore
+from config import GENERAL_INFO_MIN_SCORE, KNOWN_PLANETS
 
 VECTORSTORE = build_vectorstore()
 
@@ -44,12 +45,22 @@ def planet_revolution_period(planet_name: str) -> str:
 @tool("PlanetGeneralInfo")
 def planet_general_info(planet_name: str) -> str:
     """Return general information about a planet using similarity search over the documents."""
-    results = VECTORSTORE.similarity_search(planet_name, k=1)
+    cleaned_name = planet_name.strip().lower()
 
-    if results:
-        return results[0].page_content
+    if cleaned_name not in KNOWN_PLANETS:
+        return f"Information for {planet_name} is not available in this tool."
 
-    return f"Additional information for {planet_name} is not available in this tool."
+    results = VECTORSTORE.similarity_search_with_relevance_scores(planet_name, k=1)
+
+    if not results:
+        return f"Additional information for {planet_name} is not available in this tool."
+
+    best_doc, best_score = results[0]
+
+    if best_score < GENERAL_INFO_MIN_SCORE:
+        return f"Additional information for {planet_name} is not available in this tool."
+
+    return best_doc.page_content
 
 
 TOOLS = [
@@ -88,6 +99,11 @@ def run_tools(payload: dict) -> str:
         if "sun" not in question and "orbit" not in question and "revolve" not in question:
             return "Information about that revolution or orbital relationship is not available in this system."
 
+    # Guardrail 3: Use general info tool for broad planet facts only
+    if tool_name == "PlanetGeneralInfo":
+        planet_name = tool_args.get("planet_name", "").strip()
+        if not planet_name:
+            return "The requested information is not available in our database."
     selected_tool = TOOL_MAP[tool_name]
 
     return selected_tool.invoke(tool_args)
