@@ -17,7 +17,8 @@ def build_vectorstore() -> Chroma:
         embedding_function=embeddings,
     )
 
-    if vectorstore._collection.count() == 0:
+    # Only build DB if it doesn't exist yet
+    if not (CHROMA_DIR.exists() and any(CHROMA_DIR.iterdir())):
         docs = load_documents()
         vectorstore.add_texts(docs)
 
