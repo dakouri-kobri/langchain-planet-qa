@@ -7,6 +7,7 @@ import time
 import dotenv
 from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_core.tools import tool
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -118,13 +119,26 @@ TOOL_MAP = {
 
 # Tool Execution Logic ==========================
 
-def run_tools(message) -> str:
+def run_tools(payload: dict) -> str:
+    question = payload["question"].strip().lower()
+    message = payload["message"]
+
     if not getattr(message, "tool_calls", None):
-        return "No suitable tool was selected."
+        return "The requested information is not available in our database."
 
     tool_call = message.tool_calls[0]
     tool_name = tool_call["name"]
     tool_args = tool_call["args"]
+
+    # Guardrail 1: PlanetDistanceSun is ONLY for distance from the Sun
+    if tool_name == "PlanetDistanceSun":
+        if "sun" not in question:
+            return "Information about distances not involving the Sun is not available in this system."
+
+    # Guardrail 2: PlanetRevolutionPeriod is ONLY for revolving/orbiting around the Sun
+    if tool_name == "PlanetRevolutionPeriod":
+        if "sun" not in question and "orbit" not in question and "revolve" not in question:
+            return "Information about that revolution or orbital relationship is not available in this system."
 
     selected_tool = TOOL_MAP[tool_name]
 
@@ -184,13 +198,29 @@ def build_chain():
     )
 
     prompt = PromptTemplate.from_template(
-        "You are a helpful assistant who answers questions users may have. "
-        "You are asked: {question}."
+        "You are a helpful assistant that must answer planet questions using only the available tools.\n"
+        "Use PlanetDistanceSun only for questions about a planet's distance from the Sun.\n"
+        "Use PlanetRevolutionPeriod only for questions about how long a planet takes to orbit or revolve around the Sun.\n"
+        "Use PlanetGeneralInfo for general factual information about a planet from the data source.\n"
+        "If the question asks for unsupported information, such as distance between two planets or a fact not available in the data source, do not guess.\n"
+        "Select the most appropriate tool or return no tool call.\n"
+        "Question: {question}"
     )
 
     model_with_tools = llm.bind_tools(TOOLS)
 
-    return prompt | model_with_tools | run_tools
+    chain = (
+        RunnablePassthrough.assign(
+            prompt_value=prompt
+        )
+        | RunnablePassthrough.assign(
+            message=RunnableLambda(
+                lambda x: model_with_tools.invoke(x["prompt_value"]))
+        )
+        | RunnableLambda(run_tools)
+    )
+
+    return chain
 
 
 # Single-Question Logic =========================
