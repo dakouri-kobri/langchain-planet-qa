@@ -1,8 +1,8 @@
 # Imports =======================================
 
 from pathlib import Path
-from queue import Queue, Empty
-from threading import Thread
+import msvcrt
+import time
 
 import dotenv
 from langchain_groq import ChatGroq
@@ -132,23 +132,44 @@ def run_tools(message) -> str:
 
 # Timed Input Helper ============================
 
-def timed_input(prompt: str, timeout_seconds: int = 300) -> str | None:
-    queue: Queue[str] = Queue()
+def timed_input(prompt: str, timeout_seconds: int) -> str | None:
+    print(prompt, end="", flush=True)
 
-    def reader() -> None:
-        try:
-            user_text = input(prompt)
-            queue.put(user_text)
-        except EOFError:
-            queue.put("exit")
+    buffer: list[str] = []
+    start_time = time.time()
 
-    thread = Thread(target=reader, daemon=True)
-    thread.start()
+    while True:
+        if msvcrt.kbhit():
+            char = msvcrt.getwch()
 
-    try:
-        return queue.get(timeout=timeout_seconds)
-    except Empty:
-        return None
+            if char == "\r":
+                print()
+                return "".join(buffer)
+
+            if char == "\b":
+                if buffer:
+                    buffer.pop()
+                    print("\b \b", end="", flush=True)
+                continue
+
+            if char in ("\x00", "\xe0"):
+                _ = msvcrt.getwch()
+                continue
+
+            buffer.append(char)
+            print(char, end="", flush=True)
+
+        if time.time() - start_time >= timeout_seconds:
+            print()
+            return None
+
+        time.sleep(0.05)
+
+
+def get_user_input(prompt: str, use_timeout: bool, timeout_seconds: int = 300) -> str | None:
+    if use_timeout:
+        return timed_input(prompt, timeout_seconds)
+    return input(prompt)
 
 
 # Chain Builder =================================
@@ -187,13 +208,21 @@ def answer_question(chain, question: str) -> str:
 
 def main() -> None:
     chain = build_chain()
+    use_timeout_input = False  # True in PowerShell/CMD, False in PyCharm Run console
 
     print("Planet QA session started.")
     print("Type your question, or type 'exit' or 'q' to quit.")
-    print("Session closes after 5 minutes of inactivity.\n")
+
+    if use_timeout_input:
+        print("Session closes after 5 minutes of inactivity.\n")
+    else:
+        print("Inactivity timeout is disabled in this console.\n")
 
     while True:
-        user_query = timed_input("Ask about planets: ")
+        user_query = get_user_input(
+            "Ask about planets: ",
+            use_timeout_input
+        )
 
         if user_query is None:
             print("\nSession closed due to inactivity.")
@@ -204,7 +233,7 @@ def main() -> None:
             break
 
         result = answer_question(chain, user_query)
-        print("\n" + result + "\n")
+        print(f"\n{result}\n")
 
 
 # Entry Point ===================================
