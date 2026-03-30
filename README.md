@@ -1,4 +1,4 @@
-# 🌌 Introduction to LangChain — Planet QA System
+# 🌌 Introduction to LangChain<br><span> —  _Building a Planet QA System_
 
 A modular LLM-powered question-answering system that answers questions about planets using LangChain, Chroma vector search, Groq models, and Hugging Face embeddings.
 
@@ -131,9 +131,9 @@ This system includes validation to reduce hallucinations through:
 ---
 
 ⚠️ Limitations
-Limited to the provided planetary dataset
-CLI-only interface
-Rule-based validation rather than full semantic verification
+- Limited to the provided planetary dataset
+- CLI-only interface
+- Rule-based validation rather than full semantic verification
 
 ---
 
