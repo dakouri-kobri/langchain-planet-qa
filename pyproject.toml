@@ -1,8 +1,8 @@
 [project]
 name = "introductiontolangchain"
 version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.11"
+description = "A modular planet question-answering system built with LangChain, Chroma, and Groq."
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "chromadb>=1.5.5",
     "langchain-chroma>=1.1.0",
