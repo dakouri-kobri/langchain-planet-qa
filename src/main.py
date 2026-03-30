@@ -151,9 +151,9 @@ def timed_input(prompt: str, timeout_seconds: int = 300) -> str | None:
         return None
 
 
-# Main Application Logic ========================
+# Chain Builder =================================
 
-def main() -> None:
+def build_chain():
     dotenv.load_dotenv()
 
     llm = ChatGroq(
@@ -169,7 +169,24 @@ def main() -> None:
 
     model_with_tools = llm.bind_tools(TOOLS)
 
-    chain = prompt | model_with_tools | run_tools
+    return prompt | model_with_tools | run_tools
+
+
+# Single-Question Logic =========================
+
+def answer_question(chain, question: str) -> str:
+    cleaned_question = question.strip()
+
+    if not cleaned_question:
+        return "Please enter a question."
+
+    return chain.invoke({"question": cleaned_question})
+
+
+# Main Application Logic ========================
+
+def main() -> None:
+    chain = build_chain()
 
     print("Planet QA session started.")
     print("Type your question, or type 'exit' or 'q' to quit.")
@@ -182,17 +199,11 @@ def main() -> None:
             print("\nSession closed due to inactivity.")
             break
 
-        cleaned_query = user_query.strip()
-
-        if cleaned_query.lower() in {"exit", "quit", "q"}:
+        if user_query.strip().lower() in {"exit", "quit", "q"}:
             print("\nSession closed by user.")
             break
 
-        if not cleaned_query:
-            print("Please enter a question.\n")
-            continue
-
-        result = chain.invoke({"question": cleaned_query})
+        result = answer_question(chain, user_query)
         print("\n" + result + "\n")
 
 
