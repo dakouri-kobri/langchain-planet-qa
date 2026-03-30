@@ -1,8 +1,10 @@
 # Imports =======================================
-from pathlib import Path
-import dotenv
 
+from pathlib import Path
+
+import dotenv
 from langchain_groq import ChatGroq
+from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import tool
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -41,6 +43,8 @@ def build_vectorstore() -> Chroma:
 
     return vectorstore
 
+VECTORSTORE = build_vectorstore()
+
 
 # Tools =========================================
 
@@ -77,8 +81,6 @@ def planet_revolution_period(planet_name: str) -> str:
     )
 
 
-VECTORSTORE = build_vectorstore()
-
 @tool("PlanetGeneralInfo")
 def planet_general_info(planet_name: str) -> str:
     """Return general information about a planet using similarity search over planet documents."""
@@ -90,7 +92,32 @@ def planet_general_info(planet_name: str) -> str:
 
     return f"Additional information for {planet_name} is not available in this tool."
 
+TOOLS = [
+    planet_distance_sun,
+    planet_revolution_period,
+    planet_general_info,
+]
 
+TOOL_MAP = {
+    "PlanetDistanceSun": planet_distance_sun,
+    "PlanetRevolutionPeriod": planet_revolution_period,
+    "PlanetGeneralInfo": planet_general_info,
+}
+
+
+# Tool Execution Logic ==========================
+
+def run_tools(message) -> str:
+    if not getattr(message, "tool_calls", None):
+        return "No suitable tool was selected."
+
+    tool_call = message.tool_calls[0]
+    tool_name = tool_call["name"]
+    tool_args = tool_call["args"]
+
+    selected_tool = TOOL_MAP[tool_name]
+
+    return selected_tool.invoke(tool_args)
 
 # Main Application Logic ========================
 
@@ -103,38 +130,21 @@ def main() -> None:
         max_retries=2,
     )
 
-    tools = [
-        planet_distance_sun,
-        planet_revolution_period,
-        planet_general_info,
-    ]
+    prompt = PromptTemplate.from_template(
+        "You are a helpful assistant who answers questions users may have. "
+        "You are asked: {question}."
+    )
 
-    model_with_tools = llm.bind_tools(tools)
+    model_with_tools = llm.bind_tools(TOOLS)
+
+    chain = prompt | model_with_tools | run_tools
 
     user_query = input("Ask about planets: ")
 
-    # Step 1: Model decides which tool to use.
-    response = model_with_tools.invoke(user_query)
+    result = chain.invoke({"question": user_query})
 
-    print("\n---- Tool calls ----")
-    print(response.tool_calls)
-
-    # Step 2: Model executes first tool.
-    if response.tool_calls:
-        tool_call = response.tool_calls[0]
-        tool_name = tool_call["name"]
-        tool_args = tool_call["args"]
-
-        tool_map = {
-            "PlanetDistanceSun": planet_distance_sun,
-            "PlanetRevolutionPeriod": planet_revolution_period,
-            "PlanetGeneralInfo": planet_general_info,
-        }
-
-        tool_response = tool_map[tool_name].invoke(tool_args)
-
-        print("========= Most Relevant Document =========\n")
-        print(tool_response)
+    print(result)
+    print(chain)
 
 
 # Entry Point ===================================
