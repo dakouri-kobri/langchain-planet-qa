@@ -1,258 +1,23 @@
-# Imports =======================================
-
-from pathlib import Path
-import msvcrt
-import time
-
-import dotenv
-from langchain_groq import ChatGroq
-from langchain_core.prompts import PromptTemplate
-from langchain_core.runnables import RunnableLambda, RunnablePassthrough
-from langchain_core.tools import tool
-from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
-
-
-# Paths =========================================
-
-ROOT_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = ROOT_DIR / "data" / "planets"
-CHROMA_DIR = ROOT_DIR / "chroma_db"
-
-
-# Load Documents ================================
-
-def load_documents() -> list[str]:
-    docs = []
-
-    for file_path in sorted(DATA_DIR.glob("*.txt")):
-        content = file_path.read_text(encoding="utf-8").strip()
-        if content:
-            docs.append(content)
-
-    return docs
-
-
-# Build Vector Store ============================
-
-def build_vectorstore() -> Chroma:
-
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
-
-    vectorstore: Chroma = Chroma(
-        persist_directory=str(CHROMA_DIR),
-        embedding_function=embeddings
-    )
-
-    # noinspection PyProtectedMember
-    existing_count = vectorstore._collection.count()
-
-    if existing_count == 0:
-        docs = load_documents()
-        vectorstore.add_texts(docs)
-
-    return vectorstore
-
-VECTORSTORE = build_vectorstore()
-
-
-# Tools =========================================
-
-@tool("PlanetDistanceSun")
-def planet_distance_sun(planet_name: str) -> str:
-    """Returns approximate distance of a planet from the sun in AU."""
-
-    distances = {
-        "earth": "Earth is approximately 1 AU from the Sun.",
-        "mars": "Mars is approximately 1.5 AU from the Sun.",
-        "jupiter": "Jupiter is approximately 5.2 AU from the Sun.",
-        "pluto": "Pluto is approximately 39.5 AU from the Sun.",
-    }
-
-    return distances.get(
-        planet_name.lower(),
-        f"Information about the distance of {planet_name} from the Sun is not available in this tool."
-    )
-
-@tool("PlanetRevolutionPeriod")
-def planet_revolution_period(planet_name: str) -> str:
-    """Returns approximate revolution period of a planet in Earth years."""
-
-    periods = {
-        "earth": "Earth takes approximately 1 Earth year to revolve around the Sun.",
-        "mars": "Mars takes approximately 1.88 Earth years to revolve around the Sun.",
-        "jupiter": "Jupiter takes approximately 11.86 Earth years to revolve around the Sun.",
-        "pluto": "Pluto takes approximately 248 Earth years to revolve around the Sun.",
-    }
-
-    return periods.get(
-        planet_name.lower(),
-        f"Information about the revolution period of {planet_name} is not available in this tool."
-    )
-
-
-@tool("PlanetGeneralInfo")
-def planet_general_info(planet_name: str) -> str:
-    """Return general information about a planet using similarity search over planet documents."""
-
-    results = VECTORSTORE.similarity_search(planet_name, k=1)
-
-    if results:
-        return results[0].page_content
-
-    return f"Additional information for {planet_name} is not available in this tool."
-
-TOOLS = [
-    planet_distance_sun,
-    planet_revolution_period,
-    planet_general_info,
-]
-
-TOOL_MAP = {
-    "PlanetDistanceSun": planet_distance_sun,
-    "PlanetRevolutionPeriod": planet_revolution_period,
-    "PlanetGeneralInfo": planet_general_info,
-}
-
-
-# Tool Execution Logic ==========================
-
-def run_tools(payload: dict) -> str:
-    question = payload["question"].strip().lower()
-    message = payload["message"]
-
-    if not getattr(message, "tool_calls", None):
-        return "The requested information is not available in our database."
-
-    tool_call = message.tool_calls[0]
-    tool_name = tool_call["name"]
-    tool_args = tool_call["args"]
-
-    # Guardrail 1: PlanetDistanceSun is ONLY for distance from the Sun
-    if tool_name == "PlanetDistanceSun":
-        if "sun" not in question:
-            return "Information about distances not involving the Sun is not available in this system."
-
-    # Guardrail 2: PlanetRevolutionPeriod is ONLY for revolving/orbiting around the Sun
-    if tool_name == "PlanetRevolutionPeriod":
-        if "sun" not in question and "orbit" not in question and "revolve" not in question:
-            return "Information about that revolution or orbital relationship is not available in this system."
-
-    selected_tool = TOOL_MAP[tool_name]
-
-    return selected_tool.invoke(tool_args)
-
-# Timed Input Helper ============================
-
-def timed_input(prompt: str, timeout_seconds: int) -> str | None:
-    print(prompt, end="", flush=True)
-
-    buffer: list[str] = []
-    start_time = time.time()
-
-    while True:
-        if msvcrt.kbhit():
-            char = msvcrt.getwch()
-
-            if char == "\r":
-                print()
-                return "".join(buffer)
-
-            if char == "\b":
-                if buffer:
-                    buffer.pop()
-                    print("\b \b", end="", flush=True)
-                continue
-
-            if char in ("\x00", "\xe0"):
-                _ = msvcrt.getwch()
-                continue
-
-            buffer.append(char)
-            print(char, end="", flush=True)
-
-        if time.time() - start_time >= timeout_seconds:
-            print()
-            return None
-
-        time.sleep(0.05)
-
-
-def get_user_input(prompt: str, use_timeout: bool, timeout_seconds: int = 300) -> str | None:
-    if use_timeout:
-        return timed_input(prompt, timeout_seconds)
-    return input(prompt)
-
-
-# Chain Builder =================================
-
-def build_chain():
-    dotenv.load_dotenv()
-
-    llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
-        temperature=0.6,
-        max_retries=2,
-    )
-
-    prompt = PromptTemplate.from_template(
-        "You are a helpful assistant that must answer planet questions using only the available tools.\n"
-        "Use PlanetDistanceSun only for questions about a planet's distance from the Sun.\n"
-        "Use PlanetRevolutionPeriod only for questions about how long a planet takes to orbit or revolve around the Sun.\n"
-        "Use PlanetGeneralInfo for general factual information about a planet from the data source.\n"
-        "If the question asks for unsupported information, such as distance between two planets or a fact not available in the data source, do not guess.\n"
-        "Select the most appropriate tool or return no tool call.\n"
-        "Question: {question}"
-    )
-
-    model_with_tools = llm.bind_tools(TOOLS)
-
-    chain = (
-        RunnablePassthrough.assign(
-            prompt_value=prompt
-        )
-        | RunnablePassthrough.assign(
-            message=RunnableLambda(
-                lambda x: model_with_tools.invoke(x["prompt_value"]))
-        )
-        | RunnableLambda(run_tools)
-    )
-
-    return chain
-
-
-# Single-Question Logic =========================
-
-def answer_question(chain, question: str) -> str:
-    cleaned_question = question.strip()
-
-    if not cleaned_question:
-        return "Please enter a question."
-
-    return chain.invoke({"question": cleaned_question})
+# Local imports =================================
+from chain_builder import build_chain
+from config import USE_TIMEOUT_INPUT
+from session import answer_question, get_user_input
 
 
 # Main Application Logic ========================
-
 def main() -> None:
     chain = build_chain()
-    use_timeout_input = False  # True in PowerShell/CMD, False in PyCharm Run console
 
     print("Planet QA session started.")
     print("Type your question, or type 'exit' or 'q' to quit.")
 
-    if use_timeout_input:
+    if USE_TIMEOUT_INPUT:
         print("Session closes after 5 minutes of inactivity.\n")
     else:
         print("Inactivity timeout is disabled in this console.\n")
 
     while True:
-        user_query = get_user_input(
-            "Ask about planets: ",
-            use_timeout_input
-        )
+        user_query = get_user_input("Ask about planets: ")
 
         if user_query is None:
             print("\nSession closed due to inactivity.")
@@ -267,6 +32,5 @@ def main() -> None:
 
 
 # Entry Point ===================================
-
 if __name__ == "__main__":
     main()
