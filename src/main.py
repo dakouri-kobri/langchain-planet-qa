@@ -1,6 +1,8 @@
 # Imports =======================================
-from os.path import exists
+
 from pathlib import Path
+from queue import Queue, Empty
+from threading import Thread
 
 import dotenv
 from langchain_groq import ChatGroq
@@ -128,6 +130,27 @@ def run_tools(message) -> str:
 
     return selected_tool.invoke(tool_args)
 
+# Timed Input Helper ============================
+
+def timed_input(prompt: str, timeout_seconds: int = 300) -> str | None:
+    queue: Queue[str] = Queue()
+
+    def reader() -> None:
+        try:
+            user_text = input(prompt)
+            queue.put(user_text)
+        except EOFError:
+            queue.put("exit")
+
+    thread = Thread(target=reader, daemon=True)
+    thread.start()
+
+    try:
+        return queue.get(timeout=timeout_seconds)
+    except Empty:
+        return None
+
+
 # Main Application Logic ========================
 
 def main() -> None:
@@ -148,12 +171,29 @@ def main() -> None:
 
     chain = prompt | model_with_tools | run_tools
 
-    user_query = input("Ask about planets: ")
+    print("Planet QA session started.")
+    print("Type your question, or type 'exit' or 'q' to quit.")
+    print("Session closes after 5 minutes of inactivity.\n")
 
-    result = chain.invoke({"question": user_query})
+    while True:
+        user_query = timed_input("Ask about planets: ")
 
-    print(result)
-    print(chain)
+        if user_query is None:
+            print("\nSession closed due to inactivity.")
+            break
+
+        cleaned_query = user_query.strip()
+
+        if cleaned_query.lower() in {"exit", "quit", "q"}:
+            print("\nSession closed by user.")
+            break
+
+        if not cleaned_query:
+            print("Please enter a question.\n")
+            continue
+
+        result = chain.invoke({"question": cleaned_query})
+        print("\n" + result + "\n")
 
 
 # Entry Point ===================================
